@@ -59,3 +59,38 @@ class Cab:
     # Just why is this more fun than actual academic C coding...
     # Because this is basically using Pointers but with objects in Python. 
 
+class CabSharingApp:
+    def __init__(self):
+        self.requests = []
+        self.cabs = []
+        self.initialize_data()
+
+    def initialize_data(self):
+        # Checks if the file has data. If yes, prompts the user to load or erase.
+        # And here we see first benefit of using file and not direct input...
+        if os.path.exists(DATA_FILE) and os.path.getsize(DATA_FILE) > 0:
+            print("Existing data found in the system.")
+            choice = input("Continue with same data (C) or Erase and start fresh (E)? ").strip().upper()
+            
+            if choice == 'C':
+                with open(DATA_FILE, 'r') as f:
+                    data = json.load(f)
+                    self.requests = [RideRequest.from_dict(r) for r in data.get('requests', [])]
+                    self.cabs = [Cab.from_dict(c) for c in data.get('cabs', [])]
+                print("Data loaded successfully.\n")
+            else:
+                print("Erasing old data. Starting fresh.\n")
+                self.save_data()
+                # Overwrites with empty arrays and we now can start fresh. 
+        else:
+            print("No existing data found. Starting fresh.\n")
+
+    def save_data(self):
+        # Saves current state to the JSON file. 
+        # Gotta call this after every change to ensure that it's actually useful.
+        data = {
+            "requests": [r.to_dict() for r in self.requests],
+            "cabs": [c.to_dict() for c in self.cabs]
+        }
+        with open(DATA_FILE, 'w') as f:
+            json.dump(data, f, indent=4)
