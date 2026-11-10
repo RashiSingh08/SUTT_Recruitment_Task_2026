@@ -69,7 +69,7 @@ class CabSharingApp:
         # Checks if the file has data. If yes, prompts the user to load or erase.
         # And here we see first benefit of using file and not direct input...
         if os.path.exists(DATA_FILE) and os.path.getsize(DATA_FILE) > 0:
-            print("Existing data found in the system.")
+            print("Existing data found in the system.💽")
             choice = input("Continue with same data (C) or Erase and start fresh (E)? ").strip().upper()
             
             if choice == 'C':
@@ -77,13 +77,22 @@ class CabSharingApp:
                     data = json.load(f)
                     self.requests = [RideRequest.from_dict(r) for r in data.get('requests', [])]
                     self.cabs = [Cab.from_dict(c) for c in data.get('cabs', [])]
-                print("Data loaded successfully.\n")
+                print("Data loaded successfully.📀\n")
             else:
-                print("Erasing old data. Starting fresh.\n")
+                print("Erasing old data. Starting fresh.💿\n")
                 self.save_data()
                 # Overwrites with empty arrays and we now can start fresh. 
         else:
-            print("No existing data found. Starting fresh.\n")
+            print("No existing data found. Starting fresh.💿\n")
+
+        INITIAL_CABS_FILE = "cabs.json"
+        if os.path.exists(INITIAL_CABS_FILE):
+            with open(INITIAL_CABS_FILE, 'r') as f:
+                cabs_data = json.load(f)
+                self.cabs = [Cab.from_dict(c) for c in cabs_data]
+        else:
+            print(f"Warning: {INITIAL_CABS_FILE} not found. Starting with 0 cabs.")
+        self.save_data()
 
     def save_data(self):
         # Saves current state to the JSON file. 
@@ -94,3 +103,80 @@ class CabSharingApp:
         }
         with open(DATA_FILE, 'w') as f:
             json.dump(data, f, indent=4)
+            
+    def run(self):
+        while True:
+            print("\n---🚕Cab Sharing Menu🚕---")
+            print("1. Add a new ride request🎟️")
+            print("2. See everyone still waiting, plus all cabs🚖")
+            print("3. Find Matches (Preview)👀")            
+            print("4. Dispatch a CabCab💨")
+            print("5. Quit the app🥺")            
+            
+            choice = input("Choose an option: ").strip()
+
+            if choice == '1':
+                self.add_request()
+            elif choice == '2':
+                self.view_status()
+            elif choice == '3':
+                self.find_matches()
+            elif choice == '4':
+                self.dispatch_cab()
+            elif choice == '5':
+                self.save_data()
+                print("Data saved safely. Goodbye!👋")
+                break
+            else:
+                print("Invalid option ❌ Please enter a number from 1 to 5.")
+
+    def add_request(self):
+        # For adding a new ride request. Was option 1 in the menu.
+        print("\n---📋Ride Request📋---") 
+        name = input("Student Name: ").strip()
+        
+        dest = input("Destination (Delhi/Jaipur): ").strip().capitalize()
+        if dest not in VALID_DESTINATIONS:
+            print(f"Friendly Error: We only serve {', '.join(VALID_DESTINATIONS)}.")
+            return
+
+        time_slot = input("Time (Morning/Afternoon/Evening/Night): ").strip().capitalize()
+        if time_slot not in VALID_TIMES:
+            print(f"Friendly Error: Time slot doesn't exist. Choose from {', '.join(VALID_TIMES)}.")
+            return
+
+        try:
+            year = int(input("Year (1-5): ").strip())
+            if year not in VALID_YEARS:
+                print("Friendly Error: Year must be between 1 and 5 (No Year 7!).")
+                return
+        except ValueError:
+            print("Friendly Error: Please enter a valid number for your year.")
+            return
+
+        # Create and store the request
+        new_request = RideRequest(name, dest, time_slot, year)
+        self.requests.append(new_request)
+        self.save_data() # Save immediately after changes
+        print(f"Success! Ride request added for {name}.")
+
+    def view_status(self):
+        # For viewing all students n cabs. Was option 2 in the menu.
+        print("\n---🧑‍🎓Students Still Waiting🧑‍🎓---")
+        if not self.requests:
+            print("No students are currently waiting.")
+        for req in self.requests:
+            print(f"• {req.name} (Year {req.year}) -> {req.destination} ({req.time_slot})")
+        
+        print("\n---🚖All Cabs🚖---")
+        if not self.cabs:
+            print("No cabs are currently registered in the system.")
+        for cab in self.cabs:
+            status = "Left" if cab.has_left else "Open"
+            print(f"• Driver {cab.driver_name} | {cab.destination} ({cab.time_slot}) | Seats taken: {len(cab.students)}/{cab.seats} | Status: {status}")
+
+
+if __name__ == "__main__":
+    app = CabSharingApp()
+    app.run()
+# And Phase 1 is complete. That's a third of the work. When is the due date again?? Hope not today lol
