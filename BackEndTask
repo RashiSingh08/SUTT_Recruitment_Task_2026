@@ -176,7 +176,82 @@ class CabSharingApp:
             print(f"• Driver {cab.driver_name} | {cab.destination} ({cab.time_slot}) | Seats taken: {len(cab.students)}/{cab.seats} | Status: {status}")
 
 
+    def find_matches(self):
+        # Shows which waiting students would get a seat in each open cab right now
+        print("\n---👀Find Matches (Preview Only)👀---")
+        open_cabs = [cab for cab in self.cabs if not cab.has_left]
+        
+        if not open_cabs:
+            print("No open cabs available for matching.😔")
+            return
+
+        # Gotta go through cabs in a fixed order
+        for cab in open_cabs:
+            print(f"\nCab: {cab.driver_name} to {cab.destination} ({cab.time_slot}) - {cab.seats} seats total")
+            
+            # Find students going to the same place at the same time
+            matching_students = [req for req in self.requests if req.destination == cab.destination and req.time_slot == cab.time_slot]
+            
+            # This is only a preview. Nobody is given a seat and the waiting list doesn't change
+            # I quite frankly don't like previews. Like, isnt it better to just have a few ready made samples to show rather than a preview...
+            preview_list = matching_students[:cab.seats]
+            
+            if preview_list:
+                for student in preview_list:
+                    print(f"  -> {student.name} (Year {student.year})")
+            else:
+                print("  -> No matching students waiting.")
+
+ # Holy cow, I actually crossed 200 lines of code. 
+ # Is this thing going to cross 400?? My fingers will hurt so bad. Or will they? Dont really know...
+
+    def dispatch_cab(self):
+        print("\n---💨Dispatch a CabCab💨---")
+        open_cabs = [cab for cab in self.cabs if not cab.has_left]
+        
+        if not open_cabs:
+            print("No open cabs left to dispatch.😔")
+            return
+
+        for i, cab in enumerate(open_cabs):
+            print(f"{i + 1}. {cab.driver_name} to {cab.destination} ({cab.time_slot})")
+            
+        try:
+            choice = int(input("Enter the number of the cab to dispatch (or 0 to cancel): ").strip())
+            if choice == 0:
+                return
+            if choice < 1 or choice > len(open_cabs):
+                print("Invalid cab number ❌ Please dont troll us. Enter a valid number.")
+                return
+                
+            selected_cab = open_cabs[choice - 1]
+            
+            # When a cab leaves, it takes the students waiting for its trip. 
+            # Not all due to finite no. of seats in the cab lol...
+            matching_requests = [req for req in self.requests if req.destination == selected_cab.destination and req.time_slot == selected_cab.time_slot]
+            
+            # For now, let's take them in the order they asked. That seniority thing is a bit too much for now.
+            students_to_board = matching_requests[:selected_cab.seats]
+            
+            for student_req in students_to_board:
+                selected_cab.students.append(student_req.name)
+                self.requests.remove(student_req) 
+                # These students are no longer waiting... 
+                # One could, but I don't want to, keep a separate list of students who have already been given a cab.
+                # Aah lemme do it anyway, what's wrong with a new feature. 
+                # Apparently its not that simple. HeapQ needed... Guess gotta leave it...
+
+                
+            # Once a cab has left, nobody new can be added to it. Gotta save that beautiful data.
+            selected_cab.has_left = True
+            self.save_data()
+            
+            print(f"\nSuccess! Cab driven by {selected_cab.driver_name} has left for {selected_cab.destination}.")
+            print(f"Students on board: {', '.join(selected_cab.students) if selected_cab.students else 'None (Empty Cab)'}")
+            
+        except ValueError:
+            print("Invalid input. Please enter a valid number.")
+
 if __name__ == "__main__":
     app = CabSharingApp()
     app.run()
-# And Phase 1 is complete. That's a third of the work. When is the due date again?? Hope not today lol
