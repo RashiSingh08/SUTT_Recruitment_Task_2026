@@ -1,0 +1,11 @@
+import json
+import os
+from datetime import datetime
+
+VALID_DESTINATIONS = ["Delhi", "Jaipur", "Jodhpur"]
+VALID_TIMES = ["Morning", "Afternoon", "Evening"]
+VALID_YEARS = [1, 2, 3, 4]
+DATA_FILE = "All_that_data.json"
+
+# So instead of direct, all data stored in another file. Can save and edit it later that way
+
