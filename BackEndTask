@@ -2,10 +2,60 @@ import json
 import os
 from datetime import datetime
 
-VALID_DESTINATIONS = ["Delhi", "Jaipur", "Jodhpur"]
-VALID_TIMES = ["Morning", "Afternoon", "Evening"]
-VALID_YEARS = [1, 2, 3, 4]
-DATA_FILE = "All_that_data.json"
+# Constants for validation
+VALID_DESTINATIONS = ["Delhi", "Jaipur"]
+VALID_TIMES = ["Morning", "Afternoon", "Evening", "Night"]
+VALID_YEARS = [1, 2, 3, 4, 5]
+DATA_FILE = "cab_data.json"
 
-# So instead of direct, all data stored in another file. Can save and edit it later that way
+class RideRequest:
+    def __init__(self, name, destination, time_slot, year, submit_time=None):
+        self.name = name
+        self.destination = destination
+        self.time_slot = time_slot
+        self.year = year
+        self.submit_time = submit_time or datetime.now().isoformat()
+
+    def to_dict(self):
+        return {
+            "name": self.name, 
+            "destination": self.destination, 
+            "time_slot": self.time_slot, 
+            "year": self.year, 
+            "submit_time": self.submit_time
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(**data)
+    
+    # All that to store information about a ride request.
+
+
+class Cab:
+    def __init__(self, driver_name, seats, destination, time_slot, has_left=False, students=None):
+        self.driver_name = driver_name
+        self.seats = seats
+        self.destination = destination
+        self.time_slot = time_slot
+        self.has_left = has_left
+        self.students = students or []
+
+    def to_dict(self):
+        return {
+            "driver_name": self.driver_name, 
+            "seats": self.seats, 
+            "destination": self.destination, 
+            "time_slot": self.time_slot, 
+            "has_left": self.has_left, 
+            "students": self.students
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(**data)
+
+    # All that to store information about a cab.
+    # Just why is this more fun than actual academic C coding...
+    # Because this is basically using Pointers but with objects in Python. 
 
