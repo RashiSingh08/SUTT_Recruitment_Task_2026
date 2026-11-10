@@ -64,6 +64,7 @@ class CabSharingApp:
         self.requests = []
         self.cabs = []
         self.initialize_data()
+        self.departed = []  # To keep track of students who have already been given a cab.
 
     def initialize_data(self):
         # Checks if the file has data. If yes, prompts the user to load or erase.
@@ -71,13 +72,15 @@ class CabSharingApp:
         if os.path.exists(DATA_FILE) and os.path.getsize(DATA_FILE) > 0:
             print("Existing data found in the system.💽")
             choice = input("Continue with same data (C) or Erase and start fresh (E)? ").strip().upper()
-            
+
             if choice == 'C':
                 with open(DATA_FILE, 'r') as f:
                     data = json.load(f)
                     self.requests = [RideRequest.from_dict(r) for r in data.get('requests', [])]
                     self.cabs = [Cab.from_dict(c) for c in data.get('cabs', [])]
+                    self.departed = [RideRequest.from_dict(r) for r in data.get('departed', [])] 
                 print("Data loaded successfully.📀\n")
+                # This is an app. No UI dosent mean I can't make it pretty. Emojis!!
             else:
                 print("Erasing old data. Starting fresh.💿\n")
                 self.save_data()
@@ -99,7 +102,8 @@ class CabSharingApp:
         # Gotta call this after every change to ensure that it's actually useful.
         data = {
             "requests": [r.to_dict() for r in self.requests],
-            "cabs": [c.to_dict() for c in self.cabs]
+            "cabs": [c.to_dict() for c in self.cabs],
+            "departed": [r.to_dict() for r in self.departed] # <--- Add this line
         }
         with open(DATA_FILE, 'w') as f:
             json.dump(data, f, indent=4)
@@ -174,26 +178,32 @@ class CabSharingApp:
         for cab in self.cabs:
             status = "Left" if cab.has_left else "Open"
             print(f"• Driver {cab.driver_name} | {cab.destination} ({cab.time_slot}) | Seats taken: {len(cab.students)}/{cab.seats} | Status: {status}")
+        print("\n---🚀Departed Students🚀---")
+        if not self.departed:
+            print("Nobody has left yet.")
+        for req in self.departed:
+            print(f"• {req.name} (Year {req.year}) departed for {req.destination}")
 
 
     def find_matches(self):
-        # Shows which waiting students would get a seat in each open cab right now
-        print("\n---👀Find Matches (Preview Only)👀---")
+        print("\n---👀Find Matches (Priority Preview)👀---")
         open_cabs = [cab for cab in self.cabs if not cab.has_left]
         
         if not open_cabs:
             print("No open cabs available for matching.😔")
             return
 
-        # Gotta go through cabs in a fixed order
         for cab in open_cabs:
             print(f"\nCab: {cab.driver_name} to {cab.destination} ({cab.time_slot}) - {cab.seats} seats total")
             
-            # Find students going to the same place at the same time
             matching_students = [req for req in self.requests if req.destination == cab.destination and req.time_slot == cab.time_slot]
-            
+
             # This is only a preview. Nobody is given a seat and the waiting list doesn't change
             # I quite frankly don't like previews. Like, isnt it better to just have a few ready made samples to show rather than a preview...
+            
+            # Phase 3: Sort by year descending.
+            matching_students.sort(key=lambda x: x.year, reverse=True)
+            
             preview_list = matching_students[:cab.seats]
             
             if preview_list:
@@ -203,54 +213,45 @@ class CabSharingApp:
                 print("  -> No matching students waiting.")
 
  # Holy cow, I actually crossed 200 lines of code. 
- # Is this thing going to cross 400?? My fingers will hurt so bad. Or will they? Dont really know...
+ # Is this thing going to cross 300?? My fingers will hurt so bad. Or will they? Dont really know...
 
     def dispatch_cab(self):
         print("\n---💨Dispatch a CabCab💨---")
-        open_cabs = [cab for cab in self.cabs if not cab.has_left]
+        dest = input("Enter destination (Delhi/Jaipur): ").strip().capitalize()
+        time_slot = input("Enter time slot (Morning/Afternoon/Evening/Night): ").strip().capitalize()
         
-        if not open_cabs:
-            print("No open cabs left to dispatch.😔")
+        trip_cabs = [cab for cab in self.cabs if not cab.has_left and cab.destination == dest and cab.time_slot == time_slot]
+        
+        matching_students = [req for req in self.requests if req.destination == dest and req.time_slot == time_slot]
+        
+        if not trip_cabs or not matching_students:
+            print(f"\nMessage: Nobody is waiting, or there is no open cab for {dest} ({time_slot}). No changes made.")
             return
+            
+        selected_cab = trip_cabs[0] # Pick the first available cab for the trip
+        
+        # Phase 3: Seniors get in first. Python's stable sort handles same-year ties automatically...
+        matching_students.sort(key=lambda x: x.year, reverse=True)
+        
+        students_to_board = matching_students[:selected_cab.seats]
+        
+        for student_req in students_to_board:
+            selected_cab.students.append(student_req.name)
+            self.requests.remove(student_req) 
+            self.departed.append(student_req)
 
-        for i, cab in enumerate(open_cabs):
-            print(f"{i + 1}. {cab.driver_name} to {cab.destination} ({cab.time_slot})")
+            # These students are no longer waiting... 
+            # One could, but I don't want to, keep a separate list of students who have already been given a cab.
+            # Aah lemme do it anyway, what's wrong with a new feature. 
+       
+        # Once a cab has left, nobody new can be added to it. Gotta save that beautiful data.
             
-        try:
-            choice = int(input("Enter the number of the cab to dispatch (or 0 to cancel): ").strip())
-            if choice == 0:
-                return
-            if choice < 1 or choice > len(open_cabs):
-                print("Invalid cab number ❌ Please dont troll us. Enter a valid number.")
-                return
-                
-            selected_cab = open_cabs[choice - 1]
-            
-            # When a cab leaves, it takes the students waiting for its trip. 
-            # Not all due to finite no. of seats in the cab lol...
-            matching_requests = [req for req in self.requests if req.destination == selected_cab.destination and req.time_slot == selected_cab.time_slot]
-            
-            # For now, let's take them in the order they asked. That seniority thing is a bit too much for now.
-            students_to_board = matching_requests[:selected_cab.seats]
-            
-            for student_req in students_to_board:
-                selected_cab.students.append(student_req.name)
-                self.requests.remove(student_req) 
-                # These students are no longer waiting... 
-                # One could, but I don't want to, keep a separate list of students who have already been given a cab.
-                # Aah lemme do it anyway, what's wrong with a new feature. 
-                # Apparently its not that simple. HeapQ needed... Guess gotta leave it...
+        selected_cab.has_left = True
+        self.save_data()
+        
+        print(f"\nSuccess! Cab driven by {selected_cab.driver_name} has left for {selected_cab.destination}.")
+        print(f"Students on board: {', '.join(selected_cab.students)}")  
 
-                
-            # Once a cab has left, nobody new can be added to it. Gotta save that beautiful data.
-            selected_cab.has_left = True
-            self.save_data()
-            
-            print(f"\nSuccess! Cab driven by {selected_cab.driver_name} has left for {selected_cab.destination}.")
-            print(f"Students on board: {', '.join(selected_cab.students) if selected_cab.students else 'None (Empty Cab)'}")
-            
-        except ValueError:
-            print("Invalid input. Please enter a valid number.")
 
 if __name__ == "__main__":
     app = CabSharingApp()
