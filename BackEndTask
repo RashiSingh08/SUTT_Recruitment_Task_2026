@@ -7,6 +7,7 @@ VALID_DESTINATIONS = ["Delhi", "Jaipur"]
 VALID_TIMES = ["Morning", "Afternoon", "Evening", "Night"]
 VALID_YEARS = [1, 2, 3, 4, 5]
 DATA_FILE = "cab_data.json"
+INITIAL_CABS_FILE = "cabs.json"
 
 class RideRequest:
     def __init__(self, name, destination, time_slot, year, submit_time=None):
@@ -58,29 +59,51 @@ class Cab:
     # All that to store information about a cab.
     # Just why is this more fun than actual academic C coding...
     # Because this is basically using Pointers but with objects in Python. 
+    # Like this a legit app and yet its somehow easier than C pointers...
 
 class CabSharingApp:
     def __init__(self):
         self.requests = []
         self.cabs = []
         self.initialize_data()
-        self.departed = []  # To keep track of students who have already been given a cab.
 
     def initialize_data(self):
         # Checks if the file has data. If yes, prompts the user to load or erase.
         # And here we see first benefit of using file and not direct input...
+        
+        # Oopsies. cabs.json was being loaded AFTER the C option no matter what, so it overwrote the saved cabs every single run.
+        # A cab that had already left came back as open with zero students, and those students were already deleted from requests.
+        # This flag remembers whether we loaded old data, so cabs.json only gets read on a fresh start.
+        loaded_existing = False
+
         if os.path.exists(DATA_FILE) and os.path.getsize(DATA_FILE) > 0:
             print("Existing data found in the system.💽")
-            choice = input("Continue with same data (C) or Erase and start fresh (E)? ").strip().upper()
+
+            # Anything other than C, even "continue" or a typo, quietly counted as E and wiped everything...
+            # Like, I realised this after myself typing continue cs I myself forgot that only C is accepted...
+            # The loop now keeps asking until the input is exactly C or E, so the delete button is no longer accidental.
+            # Petrol prices are the real reason this app needs to exist, but that is a different problem.
+            choice = ""
+            while choice not in ("C", "E"):
+                choice = input("Continue with same data (C) or Erase and start fresh (E)? ").strip().upper()
 
             if choice == 'C':
-                with open(DATA_FILE, 'r') as f:
-                    data = json.load(f)
+                # I trusted my own files too much. One corrupted JSON or a missing key and from_dict(**data) crashed with a TypeError.
+                # This bug was actually pointed out by AI though...
+                # Wrapped the load in try/except, so a damaged file now falls back to a fresh start instead of a crash.
+                # Slightly humbling that my own save file can betray me, but heyyy at least the traceback is gone.
+                try:
+                    with open(DATA_FILE, 'r') as f:
+                        data = json.load(f)
                     self.requests = [RideRequest.from_dict(r) for r in data.get('requests', [])]
                     self.cabs = [Cab.from_dict(c) for c in data.get('cabs', [])]
-                    self.departed = [RideRequest.from_dict(r) for r in data.get('departed', [])] 
-                print("Data loaded successfully.📀\n")
-                # This is an app. No UI dosent mean I can't make it pretty. Emojis!!
+                    loaded_existing = True
+                    print("Data loaded successfully.📀\n")
+                    # This is an app. No UI dosent mean I can't make it pretty. Emojis!!
+                except (json.JSONDecodeError, TypeError, KeyError):
+                    self.requests = []
+                    self.cabs = []
+                    print("Data file looks damaged. Starting fresh.💿\n")
             else:
                 print("Erasing old data. Starting fresh.💿\n")
                 self.save_data()
@@ -88,22 +111,27 @@ class CabSharingApp:
         else:
             print("No existing data found. Starting fresh.💿\n")
 
-        INITIAL_CABS_FILE = "cabs.json"
-        if os.path.exists(INITIAL_CABS_FILE):
-            with open(INITIAL_CABS_FILE, 'r') as f:
-                cabs_data = json.load(f)
-                self.cabs = [Cab.from_dict(c) for c in cabs_data]
-        else:
-            print(f"Warning: {INITIAL_CABS_FILE} not found. Starting with 0 cabs.")
+        # Only a fresh start needs the starting cabs, loaded data already has its own cabs.
+        if not loaded_existing:
+            if os.path.exists(INITIAL_CABS_FILE):
+                # Same fragile loading problem here, a cabs.json entry with an extra or missing key would crash the whole app.
+                # Same fix too, try/except and a warning. Copy paste is the only design pattern I truly master. 
+                try:
+                    with open(INITIAL_CABS_FILE, 'r') as f:
+                        cabs_data = json.load(f)
+                    self.cabs = [Cab.from_dict(c) for c in cabs_data]
+                except (json.JSONDecodeError, TypeError, KeyError):
+                    print(f"Warning: {INITIAL_CABS_FILE} looks damaged. Starting with 0 cabs.")
+            else:
+                print(f"Warning: {INITIAL_CABS_FILE} not found. Starting with 0 cabs.")
         self.save_data()
 
     def save_data(self):
         # Saves current state to the JSON file. 
-        # Gotta call this after every change to ensure that it's actually useful.
+        # Gotta call this after every change to ensure that it's actually useful...
         data = {
             "requests": [r.to_dict() for r in self.requests],
-            "cabs": [c.to_dict() for c in self.cabs],
-            "departed": [r.to_dict() for r in self.departed] # <--- Add this line
+            "cabs": [c.to_dict() for c in self.cabs]
         }
         with open(DATA_FILE, 'w') as f:
             json.dump(data, f, indent=4)
@@ -138,6 +166,20 @@ class CabSharingApp:
         # For adding a new ride request. Was option 1 in the menu.
         print("\n---📋Ride Request📋---") 
         name = input("Student Name: ").strip()
+
+        # Earlier, an empty name sailed straight through and got a seat in the queue. 
+        # A ghost passenger. And I believe in segregation so no Ghost passengers or Dogs allowed in the app...
+        # Now a blank name gets rejected before anything is stored.
+        if not name:
+            print("Friendly Error: Name can't be empty.")
+            return
+
+        # Also the same student could submit unlimited requests and hog the queue...
+        # This checks the waiting list for the same name (case-insensitive) before adding another one.
+        # Honestly, spamming the cab queue is the one thing which came into my mind randomly on seeing videos about people spamming in lotteries.
+        if any(req.name.lower() == name.lower() for req in self.requests):
+            print(f"Friendly Error: {name} already has a request waiting.")
+            return
         
         dest = input("Destination (Delhi/Jaipur): ").strip().capitalize()
         if dest not in VALID_DESTINATIONS:
@@ -161,7 +203,7 @@ class CabSharingApp:
         # Create and store the request
         new_request = RideRequest(name, dest, time_slot, year)
         self.requests.append(new_request)
-        self.save_data() # Save immediately after changes
+        self.save_data()
         print(f"Success! Ride request added for {name}.")
 
     def view_status(self):
@@ -178,11 +220,9 @@ class CabSharingApp:
         for cab in self.cabs:
             status = "Left" if cab.has_left else "Open"
             print(f"• Driver {cab.driver_name} | {cab.destination} ({cab.time_slot}) | Seats taken: {len(cab.students)}/{cab.seats} | Status: {status}")
-        print("\n---🚀Departed Students🚀---")
-        if not self.departed:
-            print("Nobody has left yet.")
-        for req in self.departed:
-            print(f"• {req.name} (Year {req.year}) departed for {req.destination}")
+
+            if cab.has_left and cab.students:
+                print(f"    On board: {', '.join(cab.students)}")
 
 
     def find_matches(self):
@@ -190,7 +230,7 @@ class CabSharingApp:
         open_cabs = [cab for cab in self.cabs if not cab.has_left]
         
         if not open_cabs:
-            print("No open cabs available for matching.😔")
+            print("No open cabs available for matching.")
             return
 
         for cab in open_cabs:
@@ -202,9 +242,16 @@ class CabSharingApp:
             # I quite frankly don't like previews. Like, isnt it better to just have a few ready made samples to show rather than a preview...
             
             # Phase 3: Sort by year descending.
-            matching_students.sort(key=lambda x: x.year, reverse=True)
-            
-            preview_list = matching_students[:cab.seats]
+            # I was leaning on Python's stable sort to break same-year ties, which worked but only by luck of list order.
+            # The key now sorts by (-year, submit_time), so seniors go first and ties go to whoever asked earlier.
+            matching_students.sort(key=lambda x: (-x.year, x.submit_time))
+            # This again, did use Ai magic...
+
+            # Preview used cab.seats directly, which ignores students already sitting in the cab.
+            # Free seats = total seats minus students already on board, and max(0, ...) stops a negative number from slicing the list backwards.
+            # A negative slice is the kind of bug that makes you question your degree.
+            free_seats = max(0, cab.seats - len(cab.students))
+            preview_list = matching_students[:free_seats]
             
             if preview_list:
                 for student in preview_list:
@@ -213,12 +260,18 @@ class CabSharingApp:
                 print("  -> No matching students waiting.")
 
  # Holy cow, I actually crossed 200 lines of code. 
- # Is this thing going to cross 300?? My fingers will hurt so bad. Or will they? Dont really know...
+ # Is this thing going to cross 400?? My fingers will hurt so bad. Or will they? Dont really know...
 
     def dispatch_cab(self):
         print("\n---💨Dispatch a CabCab💨---")
         dest = input("Enter destination (Delhi/Jaipur): ").strip().capitalize()
         time_slot = input("Enter time slot (Morning/Afternoon/Evening/Night): ").strip().capitalize()
+
+        # Bad input used to fall into the "nobody is waiting" message, which was technically harmless but also technically a lie.
+        # Reusing the VALID_ lists from add_request, so a typo now gets told it is a typo.
+        if dest not in VALID_DESTINATIONS or time_slot not in VALID_TIMES:
+            print("Friendly Error: Please enter a valid destination and time slot.")
+            return
         
         trip_cabs = [cab for cab in self.cabs if not cab.has_left and cab.destination == dest and cab.time_slot == time_slot]
         
@@ -231,19 +284,24 @@ class CabSharingApp:
         selected_cab = trip_cabs[0] # Pick the first available cab for the trip
         
         # Phase 3: Seniors get in first. Python's stable sort handles same-year ties automatically...
-        matching_students.sort(key=lambda x: x.year, reverse=True)
-        
-        students_to_board = matching_students[:selected_cab.seats]
+        # Okay, I trusted the list order a bit too much here. Sorting by (-year, submit_time) makes the tie-break explicit.
+        # Now it no longer depends on how the list happens to be arranged in memory.
+        matching_students.sort(key=lambda x: (-x.year, x.submit_time))
+
+        # I boarded [:selected_cab.seats] without subtracting students already in the cab. A pre-filled cab would get overbooked.
+        # Free seats = seats minus students on board, and max(0, ...) keeps a negative number from slicing the list from the back.
+        # Overbooking a cab is exactly how real airlines make money, so technically I was just ahead of my time.
+        free_seats = max(0, selected_cab.seats - len(selected_cab.students))
+        students_to_board = matching_students[:free_seats]
         
         for student_req in students_to_board:
             selected_cab.students.append(student_req.name)
             self.requests.remove(student_req) 
-            self.departed.append(student_req)
 
             # These students are no longer waiting... 
             # One could, but I don't want to, keep a separate list of students who have already been given a cab.
-            # Aah lemme do it anyway, what's wrong with a new feature. 
-       
+            # Aah lemme do it anyway, what's wrong with a new feature...
+        
         # Once a cab has left, nobody new can be added to it. Gotta save that beautiful data.
             
         selected_cab.has_left = True
@@ -256,3 +314,5 @@ class CabSharingApp:
 if __name__ == "__main__":
     app = CabSharingApp()
     app.run()
+
+# It didnt cross 400. I mean I wanted it to but hey shorter code means better code...
